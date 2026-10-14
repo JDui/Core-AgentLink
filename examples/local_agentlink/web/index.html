@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="agentlink-ui" content="__UI_TOKEN__">
+  <title>C-AL · 本地 AgentLink 示例</title><link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><div><p class="eyebrow">CORE-AGENTLINK / LOCAL DEMO</p><h1>软件与 Agent 的本地协作</h1>
+      <p>复制 Prompt 给当前编程 Agent，观察实际操作、结果与日志。</p></div>
+      <div class="controls"><strong id="status" role="status">连接中</strong>
+      <button id="cancel">取消接管</button><button id="new-session">新会话</button>
+      <label><input type="checkbox" id="motion" checked> 动效</label></div></header>
+    <p id="error" role="alert" hidden></p><p id="identity">等待外部 Agent · 工程 demo</p>
+    <section class="panels">
+      <article><div class="panel-header"><h2>Prompt</h2><div><button id="regenerate">重新生成</button><button id="copy">复制完整 Prompt</button></div></div>
+        <p id="prompt-note" role="status"></p><textarea id="prompt" aria-label="AgentLink Prompt" spellcheck="false"></textarea>
+        <p class="footnote">显字是文本呈现动画。工程与会话以 Core 为准。</p></article>
+      <article><div class="panel-header"><h2>Log</h2><div><button id="follow">暂停追随</button><button id="clear">清空显示</button><button id="cleanup">清理旧归档</button></div></div>
+        <div id="progress" hidden><progress id="bar" max="100" aria-label="真实任务进度"></progress><span id="percent"></span></div>
+        <div id="log" tabindex="0" aria-label="Agent 操作日志"></div><p id="log-note" class="footnote">清空显示保留原始日志、工程结果和撤回记录。</p></article>
+    </section>
+    <section class="results"><div class="panel-header"><h2>当前演示时间线</h2><span id="revision"></span><button id="reload" disabled>重载结果</button></div>
+      <div id="clips"></div><p class="footnote">只演示结构化片段；没有真实模型、表情渲染或音频。重启 host 恢复演示数据。</p></section>
+  </main>
+</body></html>
+
