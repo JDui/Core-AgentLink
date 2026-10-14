@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C-AL v1 session (private local file)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "sessionId", "projectId", "token", "pid", "heartbeatMs"],
+  "properties": {
+    "version": {"const": 1},
+    "sessionId": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+    "projectId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "token": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "pid": {"type": "integer", "minimum": 1},
+    "heartbeatMs": {"type": "integer", "minimum": 0}
+  }
+}
+

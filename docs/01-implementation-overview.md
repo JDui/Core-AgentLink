@@ -6,13 +6,17 @@ AgentLink 是软件为本地编程 Agent 提供的任务入口与受限控制框
 
 | 模块 | 职责 | 本仓库入口 |
 | --- | --- | --- |
-| Core | 工程状态、范围、revision、业务校验、提交 / 撤回 / 完成条件 | `examples/local_agentlink/core.py` |
-| Host | 当前 session、token、心跳、单实例、原子请求收取、响应缓存、生命周期 | `examples/local_agentlink/host.py` |
-| CLI | 固定 session、live 校验、结构化参数、JSON 响应、超时恢复提示 | `examples/local_agentlink/cli.py`、`examples/agentlink_cli.py` |
-| Transport | 有界 JSON 文件、同目录原子发布、heartbeat 检查、请求 / 响应路径 | `examples/local_agentlink/transport.py` |
-| Journal | JSONL、epoch / seq、内存窗口、归档轮换、受限清理、IO 错误反馈 | `examples/local_agentlink/journal.py` |
-| Web GUI | Prompt 显字 / 编辑 / 复制、接管身份、真实进度、Log 与时间线 | `examples/local_agentlink/web/` |
+| Rust Core | 通用状态机、认证、白名单、调度、适配器边界 | `crates/cal-core/src/runtime.rs` |
+| Host | 独立心跳、单实例、请求领取、缓存、生命周期 | `crates/cal-cli/src/main.rs`、`crates/cal-core/src/storage.rs` |
+| Rust CLI | 固定工程 / session、结构化参数、JSON 输出 | `crates/cal-cli/` |
+| Python SDK | v1 文件桥客户端、超时恢复、日志投影 | `python/cal_sdk/` |
+| Domain adapter | 工程状态、范围、revision、提交 / 撤回 / 完成校验 | `examples/rust_python/adapter.py` |
+| Journal | JSONL、epoch / seq、分页、轮换与清理 | `crates/cal-core/src/journal.rs` |
+| Qt GUI | 工作线程 IPC、Prompt、身份、日志与时间线 | `examples/rust_python/desktop.py` |
+| C++ 接入 | QProcess 调用 CLI，读取同一 snapshot | `examples/cpp/` |
 | Qt 组件 | 可嵌入桌面软件的分段显字、编辑前显全、复制与隐藏暂停 | `examples/qt_prompt.py` |
+
+`examples/local_agentlink/` 保留为纯 Python / Web 教学版本；主实现与版本化协议以 Rust 和 protocol/v1 为准。该教学版本的 token、时间字段与命令格式不同，不能与 v1 混用。
 
 ## 操作闭环
 
@@ -27,7 +31,7 @@ AgentLink 是软件为本地编程 Agent 提供的任务入口与受限控制框
 
 Prompt 的完整文本模型独立于动画缓冲：600 ms 占位后每 33 ms 显示最多 60 字符；复制和开始编辑都立即显全。首次显示 / 手动重新生成才启动动画，普通日志轮询不重复播放。
 
-接管身份、边框和真实进度由 Core 状态驱动。未知百分比使用不定进度；完成、取消与断开停止工作动效，隐藏暂停，软件动效开关与系统减少动态效果生效。提交刷新真实业务对象，完成后提供重载结果按钮。手工 Prompt 编辑保留；会话变化后编辑版标记过期并禁用复制。
+接管身份、真实进度与操作状态由 Core 驱动。Qt 客户端刷新真实结果，保留用户编辑 Prompt；本例固定当前 session，替换 host 后需要关闭面板并读取新 Prompt。纯 Python Web 教学界面另展示状态边框、未知进度、隐藏暂停、系统减少动态效果、完成重载与过期 Prompt 提示。
 
 生产软件可以增加全局接管横幅、彩虹窗口边框、低透明度代码词背景与完成后无交互重载倒计时。装饰不截获输入；自动重载必须检查未保存内容并在交互后延迟，避免打断人工工作。当前 Web 示例只实现状态边框与手动重载，不实现自动倒计时。
 
@@ -45,6 +49,6 @@ Prompt 的完整文本模型独立于动画缓冲：600 ms 占位后每 33 ms �
 
 ## 已实现与生产补齐
 
-示例已实现 session / token / heartbeat、旧 session 拒绝、请求大小限制、白名单、scope / revision 校验、dry-run、追加 / 撤回、完成条件、取消、实时有界日志、清空显示、归档清理和过期 IPC 清理。
+Rust + Python 示例已实现 session / project / version 绑定、独立 heartbeat、白名单、有界原子文件桥、域内 scope / revision / dry-run / apply / undo / finish、取消、分页日志与清理。详见 [协议 v1](08-protocol-v1.md)。
 
 当前工程在内存中；幂等缓存仅同进程同会话最近 256 请求有效。生产接入需补齐工程事务、持久业务 / 请求账本、系统权限与重解析路径防护、异常退出恢复、耗时 worker 与取消点、工程切换生命周期、打包后的 CLI / schema 路径与实际 GUI / 领域验收。

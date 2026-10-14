@@ -1,5 +1,7 @@
 # 运行教学示例
 
+本页是早期纯 Python / Web 教学版本。正式主实现为 Rust Core；优先见 [Rust + Python 示例](rust_python/README.md)、[C++ 接入](cpp/README.md) 和 [协议 v1](../docs/08-protocol-v1.md)。两种示例使用独立状态目录与不同协议，不可混用。
+
 主示例仅依赖 Python 3.10+ 标准库；浏览器只呈现本地 GUI。无需模型或厂商 SDK。
 
 在仓库根目录启动：

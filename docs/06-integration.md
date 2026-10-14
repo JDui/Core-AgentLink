@@ -20,3 +20,5 @@
 
 本仓库的自动测试覆盖教学 Core、Journal 与真实 CLI / host 文件桥；浏览器与可选 Qt 检查范围另行报告。没有运行实际接入软件时，不以源码阅读代替运行证明。主示例可以独立运行。
 
+Rust 主实现运行 cargo build / test --workspace，再将 C_AL_CLI 指向生成的 cal 可执行文件，运行 Python 单测以启用真实跨语言 IPC 检查。未设置该变量时，互操作测试明确 skip，不能报告互操作通过。具体命令见 [混合示例](../examples/rust_python/README.md)。
+

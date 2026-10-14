@@ -1,4 +1,4 @@
-name: Reference example checks
+name: C-AL contracts and examples
 on: [push, pull_request]
 jobs:
   test:
@@ -12,5 +12,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m unittest discover -s tests -v
+      - name: Rust build and contracts
+        run: |
+          cargo build --workspace --locked
+          cargo test --workspace --locked
+      - name: Python SDK and real Rust interoperability
+        shell: pwsh
+        run: |
+          $calExecutable = if ($IsWindows) { 'target/debug/cal.exe' } else { 'target/debug/cal' }
+          $env:C_AL_CLI = (Resolve-Path $calExecutable).Path
+          python -m unittest discover -s tests -v
 

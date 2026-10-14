@@ -2,15 +2,15 @@
 
 ## 三层数据
 
-业务操作记录 / 撤回账本、原始日志、GUI 日志投影分别管理。原始 JSONL 是诊断流；业务 runId / before-after 应由工程或事务账本持久保存，不能因滚动 / 清理 Log 丧失撤回能力。事件含 epoch、seq、time、sessionId、operation、phase、message、details、percent；不保存 token。
+业务操作记录 / 撤回账本、原始日志、GUI 投影分别管理。原始 JSONL 是诊断流；业务 runId / before-after 应由工程或事务账本保存，不能因清理 Log 丧失撤回能力。v1 事件含 epoch、seq、timeMs、sessionId、operation、phase、message、details、percent；不保存 token。
 
 采用单一 Core writer；每个事件完整序列化成一行再写。限制事件大小 / 文本长度，磁盘日志有硬上限；IO 失败反馈 GUI，不能假装已保存。多个 CLI 并发提交经 Core 排队，禁止各自直接 append 同一日志文件。
 
 ## 实时读取
 
-直接 tail JSONL 时可采用 byte offset + 不完整行缓冲；每次最多读 128 KiB，发现截短或文件身份变化则复位。C-AL 示例让 GUI 拉取 Core 的有界 snapshot，cursor 使用 epoch / seq，避免轮换 / 清空回放。`Journal.since` 在 cursor 落后于内存窗口时返回 gap；GUI 明示“部分日志已超出保留窗口”。新 host epoch 不同则重新建立 cursor，旧 clear 水位不能隐藏新进程事件。
+直接 tail JSONL 可采用 byte offset + 不完整行缓冲，每块设置上限。Rust v1 使用独立 events 命令：每页最多 8 条，seq 是本页末游标，latestSeq 是当前全部事件水位。Python LogProjection 在 clear 时推进到 latestSeq，避免未读历史或旧 in-flight 页回放。epoch 变化复位，gap 表示 cursor 超出保留窗口；Qt 客户端应明确提示该缺口。
 
-UI 前台约 333 ms、隐藏 1000 ms 非重叠轮询；请求完成后才安排下一次。Core snapshot state 始终更新，浏览历史不妨碍业务刷新。仅当前滚动位置接近底部且开启追随时自动滚动；上翻自动暂停追随，按钮可恢复。
+Qt v1 面板每 500 ms 尝试读取 inspect / events，用 busy 标志避免重叠，IPC 在工作线程执行。仅开启追随且原先接近底部时滚动。纯 Python Web 教学界面采用前台 333 ms / 隐藏 1000 ms，并展示上翻暂停与恢复按钮。生产轮询还应在隐藏时降频。
 
 高频 progress / evaluate 仅在显示层按 session + operation + phase 合并，最终最近信息保留；写入、失败、撤回和完成不合并。GUI 最多 400 行；每轮新增动画也应限制数量。当前示例只对 progress 做显示合并；领域 evaluate 由业务适配器补充。
 

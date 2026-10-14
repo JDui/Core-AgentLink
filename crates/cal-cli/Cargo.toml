@@ -1,0 +1,15 @@
+[package]
+name = "cal-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "cal"
+path = "src/main.rs"
+
+[dependencies]
+cal-core = { path = "../cal-core" }
+serde_json.workspace = true
+ctrlc = "3"
+
