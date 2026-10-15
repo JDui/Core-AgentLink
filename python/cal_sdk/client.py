@@ -35,10 +35,15 @@ class AgentLink:
         if not isinstance(payload, dict) or not 0 < timeout <= 60:
             raise ValueError("Invalid payload or timeout")
         session = self._session()
+        if command not in ("inspect", "events", "cleanup", "cancel", "control", "stop-agent", "ack-stop"):
+            signal = self.control()
+            if signal:
+                raise AgentLinkError("AgentTerminationRequested", "Stop work and call checkpoint() to acknowledge termination")
         request_id = str(uuid.UUID(request_id)) if request_id else str(uuid.uuid4())
         name = f"{self.session_id}-{request_id}.json"
-        request = self.root / "requests" / name
-        response = self.root / "responses" / name
+        control = command in ("stop-agent", "control", "ack-stop")
+        request = self.root / ("control-requests" if control else "requests") / name
+        response = self.root / ("control-responses" if control else "responses") / name
         response.unlink(missing_ok=True)
         atomic_json(request, dict(version=1, id=request_id, sessionId=self.session_id,
                                  projectId=self.project_id, token=session["token"],
@@ -65,6 +70,26 @@ class AgentLink:
             raise AgentLinkError("UnknownResult", f"{command} timed out; inspect before retrying a mutation")
         finally:
             request.unlink(missing_ok=True)
+
+    def control(self):
+        """Read session-scoped termination without waiting for a busy domain adapter."""
+        self._session()
+        signal = read_json(self.root / "agent-control.json")
+        if signal is not None and (not isinstance(signal, dict) or signal.get("version") != 1
+                or signal.get("sessionId") != self.session_id or signal.get("projectId") != self.project_id
+                or signal.get("directive") != "terminate" or signal.get("status") not in ("requested", "acknowledged")):
+            raise AgentLinkError("InvalidControl", "Termination signal does not match this session")
+        return signal
+
+    def request_termination(self, reason="User requested agent termination"):
+        return self.call("stop-agent", {"reason": reason})
+
+    def checkpoint(self):
+        """Agent-side hook: acknowledge then unwind the current task; GUI must not call this."""
+        signal = self.control()
+        if signal:
+            self.call("ack-stop")
+            raise AgentLinkError("AgentTerminationRequested", signal["reason"])
 
 
 class LogProjection:

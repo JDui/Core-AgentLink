@@ -9,14 +9,17 @@ from cal_sdk import AgentLink
 
 
 def run(client):
+    client.checkpoint()
     client.call("identify", {"name": "Python"})
     before = client.call("inspect")
     proposal = dict(expectedRevision=before["domain"]["projectRevision"],
                     events=[dict(name="演示微笑", start=2, end=3, track=0)])
     client.call("log", {"message": "Inspect completed; applying one timed clip", "percent": 25})
     client.call("apply", dict(proposal, dryRun=True))
+    client.checkpoint()
     result = client.call("apply", proposal)
     after = client.call("inspect")
+    client.checkpoint()
     if not any(c.get("runId") == result["runId"] for c in after["domain"]["clips"]):
         raise RuntimeError("Applied clip missing")
     client.call("finish", {"summary": "One actual clip applied and inspected"})

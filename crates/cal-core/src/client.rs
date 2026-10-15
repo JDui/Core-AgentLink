@@ -45,8 +45,21 @@ pub fn request(
     let session = live_session(root, session_id, project_id)?;
     let id = request_id.unwrap_or_else(Uuid::new_v4);
     let name = packet_name(session_id, id);
-    let request_path = root.join("requests").join(&name);
-    let response_path = root.join("responses").join(&name);
+    let control = ["stop-agent", "control", "ack-stop"].contains(&command);
+    let request_path = root
+        .join(if control {
+            "control-requests"
+        } else {
+            "requests"
+        })
+        .join(&name);
+    let response_path = root
+        .join(if control {
+            "control-responses"
+        } else {
+            "responses"
+        })
+        .join(&name);
     if response_path.exists() {
         fs::remove_file(&response_path)?;
     }

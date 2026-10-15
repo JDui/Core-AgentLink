@@ -59,6 +59,8 @@ function accept(next) {
   snapshot = next;
   document.body.dataset.state = next.status;
   $("status").textContent = labels[next.status] + (next.agentName ? ` · ${next.agentName}` : "");
+  if (next.agentControl) $("status").textContent = next.agentControl.status === "acknowledged" ? "Agent 已确认终止" : "终止命令已发送，等待 Agent 确认";
+  $("stop-agent").disabled = busy || next.status === "finished" || !!next.agentControl;
   $("identity").textContent = `${next.agentName || "等待外部 Agent"} · 当前工程 demo · 会话 ${next.sessionId.slice(0, 8)}`;
   $("revision").textContent = `revision ${next.projectRevision}`;
   $("cancel").disabled = busy || next.status !== "active";
@@ -117,10 +119,10 @@ async function action(path) {
   if (busy) return;
   ++pollVersion;
   busy = true;
-  for (const id of ["cancel", "new-session", "cleanup"]) $(id).disabled = true;
+  for (const id of ["cancel", "stop-agent", "new-session", "cleanup"]) $(id).disabled = true;
   try { await fetchJSON(path, "POST"); accept(await fetchJSON(`/snapshot?after=${cursor}&epoch=${encodeURIComponent(epoch || "")}`)); }
   catch (error) { $("error").hidden = false; $("error").textContent = error.message; }
-  finally { busy = false; $("cleanup").disabled = false; if (snapshot) { $("cancel").disabled = snapshot.status !== "active"; $("new-session").disabled = snapshot.status === "active"; } }
+  finally { busy = false; $("cleanup").disabled = false; if (snapshot) { $("cancel").disabled = snapshot.status !== "active"; $("stop-agent").disabled = snapshot.status === "finished" || !!snapshot.agentControl; $("new-session").disabled = snapshot.status === "active"; } }
 }
 $("prompt").addEventListener("beforeinput", () => { reveal(); dirty = true; });
 $("prompt").addEventListener("input", () => { dirty = true; });
@@ -135,6 +137,7 @@ $("copy").onclick = async () => {
 $("clear").onclick = () => { visibleAfter = cursor; rows = []; gap = false; renderLog(); };
 $("cleanup").onclick = () => action("/cleanup");
 $("cancel").onclick = () => action("/cancel");
+$("stop-agent").onclick = () => action("/stop-agent");
 $("new-session").onclick = () => action("/new-session");
 $("reload").onclick = () => { renderClips(); $("identity").textContent = "已重载 Core 当前结果 · 完成结果保留"; };
 $("follow").onclick = () => { follow = !follow; $("follow").textContent = follow ? "暂停追随" : "恢复追随"; if (follow) $("log").scrollTop = $("log").scrollHeight; };

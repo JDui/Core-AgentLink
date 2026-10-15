@@ -20,13 +20,20 @@ session.json 含 version=1、sessionId、projectId、token、pid、heartbeatMs�
 | events | 可选 epoch / after | 任意状态；Rust 返回日志页 |
 | cleanup | {} | 任意状态；只删管理归档 |
 | cancel | {} | waiting / active / cancelled；停止后续写入 |
+| stop-agent | 可选 reason≤400字符 | 独立通道发送 terminate 命令，阻止后续写入，保留结果 |
+| control | {} | 独立通道读取终止信号，未请求时 null |
+| ack-stop | {} | Agent 侧确认收到终止命令 |
 | apply | 由 adapter 定义；示例为 expectedRevision / events / dryRun | active；域内验证和提交 |
 | undo | 示例 runId | active；域内完整记录冲突检查 |
 | finish | summary≤1000字符 | active；adapter 确认 finished=true 后 Core 终态 |
 
 命令 completed 不等于 session finished；dry-run 不产生实际片段。终态允许读取日志、inspect 与 cleanup，拒绝新写入。cancel 与 undo 不相同，已提交内容保留。
 
-inspect 返回 sessionId、projectId、status、agentName、percent、domain、journalError、transportError。domain 示例含 projectRevision、scope、clips、runIds，真正软件可以替换为自己的领域结构。
+inspect 返回 sessionId、projectId、status、agentName、percent、domain、agentControl、journalError、transportError。domain 示例含 projectRevision、scope、clips、runIds，真正软件可以替换为自己的领域结构。
+
+stop-agent / control / ack-stop 使用同样的请求认证与 envelope，但目录为 control-requests / control-responses，由独立心跳线程收取，不等待普通业务请求。agent-control.json 保存终止信号或 null，包含当前 version / projectId / sessionId、requestId、directive=terminate、status=requested|acknowledged、reason 和时间字段。旧会话不能读取或发布到新会话；原始 token 不进入信号文件。主循环把终止状态同步为 cancelled 并记录日志，在执行中的操作可能已经提交。
+
+SDK checkpoint 检查信号，收到 terminate 后 ack-stop，再抛出 AgentTerminationRequested，让 Agent 调用方退出本次任务。GUI 不调用 checkpoint，避免冒充 Agent 确认。终止信号不是外部模型进程已退出的证明，详见 [终止控制](11-agent-termination.md)。
 
 ## 日志 cursor
 
@@ -36,7 +43,7 @@ events 页含 epoch、seq、latestSeq、reset、gap、events、error。seq 为�
 
 ## 幂等、错误与超时
 
-Host 保存同会话最近 256 请求响应，相同 request ID 与相同内容返回缓存；不同内容报 RequestIdConflict。缓存淘汰、重启后无持久保证。正式持久账本需与业务事务设计，不能承诺 exactly-once。
+普通业务通道保存同会话最近 256 请求响应，相同 request ID 与相同内容返回缓存；不同内容报 RequestIdConflict。控制通道独立于这份缓存：重复 stop-agent 保留首次终止信号，同一终止 ID 改写原因被拒绝，ack-stop 重复确认不改变首次确认时间。缓存淘汰、重启后无持久保证。正式持久账本需与业务事务设计，不能承诺 exactly-once。
 
 | error.code | 含义与动作 |
 | --- | --- |

@@ -97,6 +97,8 @@ fn run(command: &str, opts: &HashMap<String, String>) -> Result<Value, Error> {
         "undo" => &["--run-id"],
         "finish" => &["--summary"],
         "events" => &["--epoch", "--after"],
+        "stop-agent" => &["--reason"],
+        "control" | "ack-stop" => &[],
         "inspect" | "cancel" | "cleanup" => &[],
         _ => return Err(Error::new("Arguments", "Unknown command")),
     };
@@ -127,6 +129,9 @@ fn run(command: &str, opts: &HashMap<String, String>) -> Result<Value, Error> {
         .transpose()?;
     let payload = match command {
         "identify" => json!({"name":required(opts,"--name")?}),
+        "stop-agent" => {
+            json!({"reason":opts.get("--reason").map(String::as_str).unwrap_or("User requested agent termination")})
+        }
         "log" => {
             let mut payload = json!({"message":required(opts,"--message")?});
             if let Some(percent) = opts.get("--percent") {
@@ -169,7 +174,7 @@ fn run(command: &str, opts: &HashMap<String, String>) -> Result<Value, Error> {
 fn main() {
     let args = env::args().skip(1).collect::<Vec<_>>();
     if args.is_empty() || args[0] == "--help" {
-        println!("C-AL v1\ncal serve --state-dir DIR --project-id ID --python PYTHON --adapter SCRIPT\ncal COMMAND --state-dir DIR --project-id ID --session UUID [command options]\nCommands: identify, inspect, log, apply, undo, finish, cancel, events, cleanup\nWrites are live-only. Adapter executable is chosen at host startup, never by a request.");
+        println!("C-AL v1\ncal serve --state-dir DIR --project-id ID --python PYTHON --adapter SCRIPT\ncal COMMAND --state-dir DIR --project-id ID --session UUID [command options]\nCommands: identify, inspect, log, apply, undo, finish, cancel, events, cleanup, stop-agent, control, ack-stop\nWrites are live-only. stop-agent sends a cooperative termination command, not a process kill.");
         return;
     }
     let result = options(&args[1..]).and_then(|opts| run(&args[0], &opts));

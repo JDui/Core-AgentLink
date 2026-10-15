@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C-AL cooperative agent termination signal (null before a request)",
+  "oneOf": [
+    {"type": "null"},
+    {"type": "object", "additionalProperties": false,
+      "required": ["version", "sessionId", "projectId", "requestId", "directive", "status", "reason", "requestedAtMs", "acknowledgedAtMs"],
+      "properties": {
+        "version": {"const": 1},
+        "sessionId": {"type": "string", "format": "uuid"},
+        "projectId": {"type": "string", "minLength": 1, "maxLength": 128},
+        "requestId": {"type": "string", "format": "uuid"},
+        "directive": {"const": "terminate"},
+        "status": {"enum": ["requested", "acknowledged"]},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 400},
+        "requestedAtMs": {"type": "integer", "minimum": 0},
+        "acknowledgedAtMs": {"type": ["null", "integer"], "minimum": 0}
+      }
+    }
+  ]
+}

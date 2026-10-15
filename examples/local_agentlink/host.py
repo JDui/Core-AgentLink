@@ -45,6 +45,7 @@ PowerShell CLI 前缀：
 3. log --message '已检查当前范围'。apply --proposal <文件> --dry-run 检查，再不带 --dry-run 实际 apply。
 4. inspect 确认片段，保留 runId。超时先 inspect，不重复提交；冲突重新 inspect 和修订。
 5. 若需撤回，undo --run-id <本次runId>；被用户编辑时拒绝。取消 / 会话失效后停止写入。
+每步前及长任务期间定期运行 control；收到 terminate 时停止工作，调用 ack-stop 确认后结束任务。
 6. 至少本会话一个实际且未撤回片段存在时 finish --summary '已写入并检查一个片段'。
 只报告真实执行证据；这个示例没有渲染或音频工具，不能宣称视觉或听觉验证。
 """
@@ -233,7 +234,7 @@ def handler_for(runtime):
             if (not self.allowed_host() or self.headers.get("Origin") != origin
                     or not secrets.compare_digest(self.headers.get("X-AgentLink-UI", ""), runtime.ui_token)):
                 return self.send(403, {"error": "Invalid UI origin or credential"})
-            if self.path not in ("/cancel", "/new-session", "/cleanup"):
+            if self.path not in ("/cancel", "/new-session", "/cleanup", "/stop-agent"):
                 return self.send(404, {"error": "Not found"})
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -242,6 +243,8 @@ def handler_for(runtime):
                 self.rfile.read(length)
                 if self.path == "/cancel":
                     runtime.core.cancel()
+                elif self.path == "/stop-agent":
+                    runtime.core.request_termination()
                 elif self.path == "/new-session":
                     runtime.rotate()
                 else:

@@ -101,6 +101,14 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.call("apply", self.proposal())
 
+    def test_termination_command_is_distinct_from_cancel_and_has_agent_ack(self):
+        self.assertIsNone(self.call("control"))
+        self.assertEqual(self.call("stop-agent",{"reason":"user stop"})["status"],"requested")
+        with self.assertRaises(ValueError):
+            self.call("apply",self.proposal())
+        self.assertEqual(self.call("ack-stop")["status"],"acknowledged")
+        self.assertEqual(len(self.call("inspect")["clips"]),1)
+
 
 class JournalTests(unittest.TestCase):
     def setUp(self):

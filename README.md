@@ -37,6 +37,8 @@ Rust 主实现包含协议版本 / 工程 / 会话绑定、token、独立心跳�
 
 可选 Qt 面板显示当前状态、Prompt、实时日志与业务结果，IPC 在工作线程执行。Prompt 分段显字并完整复制；清空显示与删除归档分别管理。Qt 动效偏好由宿主传入。
 
+Qt 与 Web 示例均提供 **“终止 Agent”** 按钮：向当前会话发送 terminate 命令，阻止后续写入，保留已提交结果，并区分“等待确认”和“Agent 已确认”。Rust 使用独立控制通道，普通业务请求忙碌时也能发送。Agent 通过 SDK checkpoint 或 CLI control / ack-stop 协作退出；这不会强杀外部编程工具进程。[终止控制接入](docs/11-agent-termination.md)
+
 不需要 Rust 的入门体验可使用 [纯 Python 教学示例](examples/README.md)：
 
 ```powershell

@@ -30,6 +30,10 @@ def main():
     finish = commands.add_parser("finish")
     finish.add_argument("--summary", required=True)
     commands.add_parser("cancel")
+    stop_agent = commands.add_parser("stop-agent")
+    stop_agent.add_argument("--reason", default="User requested agent termination")
+    commands.add_parser("control")
+    commands.add_parser("ack-stop")
     args = parser.parse_args()
     try:
         if args.workdir:
@@ -50,6 +54,8 @@ def main():
             payload = {"runId": args.run_id}
         elif args.command == "finish":
             payload = {"summary": args.summary}
+        elif args.command == "stop-agent":
+            payload = {"reason": args.reason}
         if not 0 < args.timeout <= 60:
             raise ValueError("Timeout must be >0 and <=60 seconds")
         result = request(args.state_dir, args.session, args.command, payload, args.timeout, args.request_id)

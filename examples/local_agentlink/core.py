@@ -44,6 +44,7 @@ class Core:
             self.token = secrets.token_urlsafe(32)
             self.status, self.name, self.percent = "waiting", "", None
             self.authored = set()
+            self.agent_control = None
             self.journal.emit(self.session, "session", "waiting", "新会话等待 Agent")
 
     def cancel(self):
@@ -51,17 +52,42 @@ class Core:
             self.status, self.percent = "cancelled", None
             self.journal.emit(self.session, "cancel", "cancelled", "已取消；已提交结果保留")
 
+    def request_termination(self, reason="用户点击终止 Agent"):
+        with self.lock:
+            if self.status == "finished":
+                raise ValueError("Task already finished")
+            reason = text(reason, 400)
+            if self.agent_control is None:
+                self.agent_control = dict(sessionId=self.session, directive="terminate", status="requested", reason=reason)
+                self.status, self.percent = "cancelled", None
+                self.journal.emit(self.session, "stop-agent", "requested", "终止命令已发送，等待 Agent 确认")
+            return copy.deepcopy(self.agent_control)
+
     def inspect(self):
         with self.lock:
             return copy.deepcopy(dict(sessionId=self.session, status=self.status, agentName=self.name,
                                       percent=self.percent, projectRevision=self.revision,
                                       scope=dict(projectId="demo", tracks=[0, 1], duration=30),
-                                      clips=self.clips, runIds=list(self.runs)))
+                                      clips=self.clips, runIds=list(self.runs), agentControl=self.agent_control))
 
     def execute(self, expected_session, token, command, payload):
         with self.lock:
             if expected_session != self.session or not secrets.compare_digest(token, self.token):
                 raise ValueError("Stale or invalid session")
+            if command == "control":
+                fields(payload, [])
+                return copy.deepcopy(self.agent_control)
+            if command == "stop-agent":
+                fields(payload, ["reason"])
+                return self.request_termination(payload.get("reason", "User requested agent termination"))
+            if command == "ack-stop":
+                fields(payload, [])
+                if self.agent_control is None:
+                    raise ValueError("No termination command to acknowledge")
+                if self.agent_control["status"] != "acknowledged":
+                    self.agent_control["status"] = "acknowledged"
+                    self.journal.emit(self.session, "stop-agent", "acknowledged", "Agent 已确认终止")
+                return copy.deepcopy(self.agent_control)
             if command == "inspect":
                 fields(payload, [])
                 return self.inspect()

@@ -9,6 +9,94 @@ use std::fs;
 use tempfile::TempDir;
 use uuid::Uuid;
 
+#[test]
+fn termination_is_session_bound_acknowledged_and_blocks_writes() {
+    let temp = TempDir::new().unwrap();
+    let mut runtime = active(&temp);
+    let mut invalid = packet(&runtime, "stop-agent", json!({"reason":"stop"}));
+    invalid.session_id = Uuid::new_v4();
+    assert!(!runtime.handle(invalid).ok);
+    let stop = packet(&runtime, "stop-agent", json!({"reason":"user stop"}));
+    let delivered = runtime.handle(stop.clone());
+    assert_eq!(delivered.result["status"], "requested");
+    assert_eq!(
+        runtime.handle(stop).result["requestId"],
+        delivered.result["requestId"]
+    );
+    let req = packet(&runtime, "apply", json!({}));
+    assert_eq!(runtime.handle(req).error.unwrap().code, "TerminalSession");
+    let ack = packet(&runtime, "ack-stop", json!({}));
+    assert_eq!(runtime.handle(ack).result["status"], "acknowledged");
+    let inspect = packet(&runtime, "inspect", json!({}));
+    assert_eq!(
+        runtime.handle(inspect).result["domain"]["projectRevision"],
+        0
+    );
+}
+
+#[test]
+fn termination_channel_remains_available_while_domain_is_busy() {
+    use std::{sync::mpsc, thread, time::Duration};
+    struct Gated {
+        entered: mpsc::Sender<()>,
+        release: mpsc::Receiver<()>,
+    }
+    impl DomainAdapter for Gated {
+        fn call(&mut self, _: &Session, command: &str, _: &Value) -> Result<Value, Error> {
+            if command == "apply" {
+                self.entered.send(()).unwrap();
+                self.release.recv_timeout(Duration::from_secs(5)).unwrap();
+            }
+            Ok(json!({"projectRevision":1}))
+        }
+    }
+    let temp = TempDir::new().unwrap();
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let mut runtime = Runtime::new(
+        temp.path(),
+        "demo",
+        Gated {
+            entered: entered_tx,
+            release: release_rx,
+        },
+    )
+    .unwrap();
+    let session = runtime.session.clone();
+    let req = |command: &str, payload: Value| Request {
+        version: VERSION,
+        id: Uuid::new_v4(),
+        session_id: session.session_id,
+        project_id: "demo".into(),
+        token: session.token.clone(),
+        command: command.into(),
+        payload,
+    };
+    assert!(runtime.handle(req("identify", json!({"name":"Codex"}))).ok);
+    let apply = req("apply", json!({}));
+    let worker = thread::spawn(move || {
+        let result = runtime.handle(apply);
+        (runtime, result)
+    });
+    entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    let signal = cal_core::client::request(
+        temp.path(),
+        session.session_id,
+        "demo",
+        "stop-agent",
+        json!({"reason":"stop busy agent"}),
+        Duration::from_secs(2),
+        None,
+    )
+    .unwrap();
+    assert_eq!(signal["status"], "requested");
+    release_tx.send(()).unwrap();
+    let (mut runtime, result) = worker.join().unwrap();
+    assert!(result.ok); // Already-running work may have committed; never pretend it was rolled back.
+    let inspect = req("inspect", json!({}));
+    assert_eq!(runtime.handle(inspect).result["status"], "cancelled");
+}
+
 #[derive(Default)]
 struct Domain {
     writes: u64,

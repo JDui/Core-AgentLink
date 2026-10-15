@@ -1,5 +1,18 @@
 # 本地验证记录
 
+## 2026-10-15：终止 Agent 按钮
+
+GPT-6 Luna（low）子代理执行验证，主代理审查实现和结果：
+
+- Rust 离线构建通过，12 项 contracts 测试通过，包含终止信号会话隔离、确认、新写入阻断，以及 adapter 忙碌时独立发送。
+- C_AL_CLI 指向新 Rust CLI 后，Python 全套 27 项测试通过；Node 语法、Python compileall、Rust 格式检查通过。
+- Qt offscreen smoke：真实 Rust host / Python adapter，QTest 点击“终止 Agent”，观察 requested；独立 SDK checkpoint 确认后面板显示“Agent 已确认终止”，已提交片段保留。
+- Web 接口 smoke：错误 UI 凭据返回 403；正确同源凭据接受 /stop-agent，control / ack-stop 与结果保留通过。
+
+这是协议 / 运行与无窗口控件检查，不代表可见 GUI 动画验收。当前终止为协作命令，需 Agent 接入检查点；未注册厂商推理取消 API，也未测试或实现强杀外部 Agent 进程。
+
+## 2026-10-14：初始框架
+
 日期：2026-10-14。验证由 GPT-6 Luna（low）子代理执行，主代理检查实现与结果。本次在 Windows 本地环境运行，未启动云 CI。
 
 | 项目 | 结果 | 证据范围 |

@@ -137,3 +137,35 @@ class RustLiveTests(unittest.TestCase):
         with self.assertRaisesRegex(AgentLinkError, "StaleSession"):
             AgentLink(self.root, self.client.session_id, "other").call("inspect")
 
+    def test_agent_termination_signal_checkpoint_ack_and_retained_results(self):
+        self.client.call("identify", {"name":"Python"})
+        proposal=dict(expectedRevision=0,events=[dict(name="smile",start=2,end=3,track=0)])
+        self.client.call("apply",proposal)
+        result=subprocess.run([str(self.cli),"stop-agent","--state-dir",str(self.root),
+            "--project-id","demo","--session",self.client.session_id,"--reason","user stop"],
+            capture_output=True,encoding="utf-8",timeout=5)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertEqual(self.client.control()["status"],"requested")
+        with self.assertRaisesRegex(AgentLinkError,"AgentTerminationRequested"):
+            self.client.checkpoint()
+        self.assertEqual(self.client.control()["status"],"acknowledged")
+        with self.assertRaises(AgentLinkError):
+            self.client.call("apply",dict(proposal,expectedRevision=1))
+        snapshot=self.client.call("inspect")
+        self.assertEqual(snapshot["status"],"cancelled")
+        self.assertEqual(len(snapshot["domain"]["clips"]),2)
+
+    def test_termination_rejects_stale_control_request(self):
+        from cal_sdk._files import atomic_json,read_json
+        session=json.loads((self.root/"session.json").read_text(encoding="utf-8"))
+        old=str(uuid.uuid4()); request_id=str(uuid.uuid4())
+        name=f"{old}-{request_id}.json"
+        atomic_json(self.root/"control-requests"/name,dict(version=1,id=request_id,
+            sessionId=old,projectId="demo",token=session["token"],command="stop-agent",payload={}))
+        response=self.root/"control-responses"/name
+        deadline=time.monotonic()+3
+        while not response.exists() and time.monotonic()<deadline:
+            time.sleep(.02)
+        self.assertEqual(read_json(response)["error"]["code"],"StaleSession")
+        self.assertIsNone(self.client.control())
+

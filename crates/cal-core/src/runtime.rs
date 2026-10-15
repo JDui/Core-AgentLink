@@ -1,5 +1,6 @@
 use crate::{
     adapter::DomainAdapter,
+    control::{self, ControlState, SharedControl},
     journal::Journal,
     protocol::{fields, now_ms, text, Error, Request, Response, Session, Status, VERSION},
     storage::{atomic_json, managed_packet, packet_name, read_json, regular, OwnerLock},
@@ -32,6 +33,8 @@ pub struct Runtime<A: DomainAdapter> {
     stop: Arc<AtomicBool>,
     heartbeat: Option<JoinHandle<()>>,
     heartbeat_error: Arc<std::sync::Mutex<Option<String>>>,
+    control: SharedControl,
+    logged_control_status: Option<String>,
     _owner: OwnerLock,
 }
 
@@ -45,7 +48,12 @@ impl<A: DomainAdapter> Runtime<A> {
         }
         let owner = OwnerLock::acquire(root)?;
         let root = owner.root.clone();
-        for name in ["requests", "responses"] {
+        for name in [
+            "requests",
+            "responses",
+            "control-requests",
+            "control-responses",
+        ] {
             let directory = root.join(name);
             if fs::symlink_metadata(&directory)
                 .is_ok_and(|m| !m.is_dir() || m.file_type().is_symlink())
@@ -55,6 +63,11 @@ impl<A: DomainAdapter> Runtime<A> {
             fs::create_dir_all(directory)?;
         }
         let session = Session::new(project_id);
+        let control = Arc::new(std::sync::Mutex::new(ControlState::default()));
+        atomic_json(
+            &root.join("agent-control.json"),
+            &Option::<control::AgentControl>::None,
+        )?;
         atomic_json(&root.join("session.json"), &session)?;
         let mut journal = Journal::new(&root, 2 * 1024 * 1024, 2, 400);
         journal.emit(
@@ -67,6 +80,7 @@ impl<A: DomainAdapter> Runtime<A> {
         );
         let stop = Arc::new(AtomicBool::new(false));
         let heartbeat_error = Arc::new(std::sync::Mutex::new(None));
+        let hb_control = control.clone();
         let (hb_root, mut hb_session, hb_stop, hb_error) = (
             root.clone(),
             session.clone(),
@@ -93,6 +107,9 @@ impl<A: DomainAdapter> Runtime<A> {
                             .map(|e| e.to_string());
                     last = now_ms();
                 }
+                if let Err(error) = control::pump(&hb_root, &hb_session, &hb_control) {
+                    *hb_error.lock().unwrap() = Some(error.to_string());
+                }
                 thread::sleep(Duration::from_millis(50));
             }
         });
@@ -110,10 +127,34 @@ impl<A: DomainAdapter> Runtime<A> {
             stop,
             heartbeat: Some(heartbeat),
             heartbeat_error,
+            control,
+            logged_control_status: None,
         })
     }
     pub fn root(&self) -> &Path {
         &self.root
+    }
+    fn sync_control(&mut self) {
+        let signal = self.control.lock().unwrap().signal.clone();
+        if let Some(signal) = signal {
+            self.status = Status::Cancelled;
+            self.percent = None;
+            if self.logged_control_status.as_deref() != Some(&signal.status) {
+                self.journal.emit(
+                    self.session.session_id,
+                    "stop-agent",
+                    &signal.status,
+                    if signal.status == "acknowledged" {
+                        "Agent acknowledged termination"
+                    } else {
+                        "Termination command sent; waiting for agent acknowledgement"
+                    },
+                    json!({"requestId":signal.request_id,"reason":signal.reason}),
+                    None,
+                );
+                self.logged_control_status = Some(signal.status);
+            }
+        }
     }
     fn authenticate(&self, req: &Request) -> Result<(), Error> {
         if req.version != VERSION {
@@ -143,6 +184,12 @@ impl<A: DomainAdapter> Runtime<A> {
     pub fn handle(&mut self, req: Request) -> Response {
         if let Err(error) = self.authenticate(&req) {
             return Response::from_result(req.id, Err(error));
+        }
+        self.sync_control();
+        if ["stop-agent", "control", "ack-stop"].contains(&req.command.as_str()) {
+            let result = control::handle(&self.root, &self.session, &self.control, &req);
+            self.sync_control();
+            return Response::from_result(req.id, result);
         }
         if !req.payload.is_object() {
             return Response::from_result(
@@ -204,7 +251,7 @@ impl<A: DomainAdapter> Runtime<A> {
             return Ok(
                 json!({"sessionId":self.session.session_id,"projectId":self.session.project_id,
                 "status":self.status,"agentName":self.name,"percent":self.percent,
-                "domain":domain,"journalError":self.journal.error,"transportError":*self.heartbeat_error.lock().unwrap()}),
+                "domain":domain,"agentControl":control::view(&self.control),"journalError":self.journal.error,"transportError":*self.heartbeat_error.lock().unwrap()}),
             );
         }
         if command == "events" {
@@ -313,7 +360,15 @@ impl<A: DomainAdapter> Runtime<A> {
             None
         };
         let result = self.adapter.call(&self.session, command, payload)?;
+        self.sync_control();
         if command == "finish" {
+            let mut state = self.control.lock().unwrap();
+            if state.signal.is_some() {
+                return Err(Error::new(
+                    "TerminalSession",
+                    "Agent termination was requested",
+                ));
+            }
             if result["finished"] != true {
                 return Err(Error::new(
                     "IncompleteResult",
@@ -321,6 +376,7 @@ impl<A: DomainAdapter> Runtime<A> {
                 ));
             }
             self.status = Status::Finished;
+            state.finished = true;
             self.percent = Some(100);
         }
         self.journal.emit(self.session.session_id, command, if command == "finish" { "finished" } else { "completed" },
@@ -329,6 +385,7 @@ impl<A: DomainAdapter> Runtime<A> {
         Ok(result)
     }
     pub fn pump(&mut self) -> Result<usize, Error> {
+        self.sync_control();
         let mut entries = fs::read_dir(self.root.join("requests"))?
             .filter_map(Result::ok)
             .map(|e| e.path())
@@ -370,7 +427,12 @@ impl<A: DomainAdapter> Runtime<A> {
     }
     pub fn cleanup_ipc(&self) -> Result<usize, Error> {
         let mut removed = 0;
-        for name in ["requests", "responses"] {
+        for name in [
+            "requests",
+            "responses",
+            "control-requests",
+            "control-responses",
+        ] {
             for entry in fs::read_dir(self.root.join(name))? {
                 let path = entry?.path();
                 if managed_packet(&path).is_none() || !regular(&path) {

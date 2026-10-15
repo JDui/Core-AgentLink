@@ -13,7 +13,7 @@
     "sessionId": {"$ref": "#/$defs/uuid"},
     "projectId": {"type": "string", "minLength": 1, "maxLength": 128},
     "token": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "command": {"enum": ["identify", "inspect", "log", "events", "cleanup", "cancel", "apply", "undo", "finish"]},
+    "command": {"enum": ["identify", "inspect", "log", "events", "cleanup", "cancel", "apply", "undo", "finish", "stop-agent", "control", "ack-stop"]},
     "payload": {"type": "object"}
   }
 }

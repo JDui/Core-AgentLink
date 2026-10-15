@@ -18,6 +18,9 @@ docs/08-protocol-v1.md before changing cross-language behavior.
 - Pin live operations to a session and project. Reject stale sessions and revisions.
 - Log cleanup must not reset control state, remove business results or erase undo data.
 - Timeout is an unknown result: inspect before retrying a mutation.
+- The terminate-agent button sends a session-bound cooperative command through the
+  independent control channel. Preserve requested/acknowledged states; only the
+  agent acknowledges via checkpoint/ack-stop. Never claim a process was killed.
 - Never infer listening or visual quality from analysis fields or numeric evaluation.
 - Prefer small, meaningful protocol tests: stale session, invalid scope, timeout,
   cancellation, undo conflicts, log rotation and clear-display cursor behavior.
